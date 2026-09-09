@@ -9,6 +9,9 @@ import wfdb
 
 DATA = Path("data/raw/Session1/session1_participant1")
 
+OUTPUT = Path("data/explore_data")
+OUTPUT.mkdir(parents=True, exist_ok=True)
+
 # Channels are named in the header: F1-F16 forearm, W1-W12 wrist, U1-U4 unused.
 # Asking by name means I can't accidentally grab one of the four dead columns.
 FOREARM = [f"F{i}" for i in range(1, 17)]
