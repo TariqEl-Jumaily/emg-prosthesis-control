@@ -216,3 +216,18 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+
+# ---- project specific ----
+
+# The dataset. One subject is ~120 MB, the subset we end up using is ~1.3 GB,
+# and the full release is 9.4 GB. None of it belongs in git.
+data/
+
+# Cached numpy arrays and trained model weights. Regenerable, so not tracked.
+cache/
+*.npy
+*.npz
+*.pt
+*.joblib
