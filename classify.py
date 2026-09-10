@@ -1,53 +1,58 @@
-# First attempt at a classifier. Two gestures, one feature, one participant.
-# The point is to get an end to end path from files to a number, not to be good.
-
+# All 17 gestures, Hudgins TD4 features, LDA with shrinkage.
+# Held-out trials only. The random split is gone, it was never real.
 
 import numpy as np
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.model_selection import train_test_split
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 
-from load import TRIALS, load_trial
+from features import hudgins
+from load import GESTURES, TRIALS, load_trial
 from prep import bandpass, window
-
-CLASSES = {15: "hand open", 16: "hand close"}
 
 TRAIN_TRIALS = (1, 2, 3, 4, 5)
 TEST_TRIALS = (6, 7)
 
-X = []      # features: 16 numbers per window
-Y = []      # labels: 0 or 1, one per window
+X = []
+y = []
+trial_of = []
 
-trial_of = []      # remember which trial each window came from
-
-for label, gesture in enumerate(CLASSES):
+for gesture in GESTURES:
     for trial in TRIALS:
         w = window(bandpass(load_trial(1, 1, gesture, trial)))
-
-        # MAV: average size of the frequency on each channel, ignoring sign.
-        # axis=1 collapses time, so (77, 410, 16) becomes (77, 16).
-        X.append(np.mean(np.abs(w), axis=1))
-
-        # Every window from this trial gets the same label.
-        Y.append(np.full(len(w), label))
-
+        X.append(hudgins(w))
+        y.append(np.full(len(w), gesture))       # label is the gesture number itself
         trial_of.append(np.full(len(w), trial))
-        
 
 X = np.concatenate(X)
-Y = np.concatenate(Y)
+y = np.concatenate(y)
 trial_of = np.concatenate(trial_of)
-
-
-# Hold back 30% of the windows to test on.
-X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.3, random_state=0)
-random_acc = LinearDiscriminantAnalysis().fit(X_train, Y_train).score(X_test, Y_test)
+print("windows:", X.shape)
 
 train = np.isin(trial_of, TRAIN_TRIALS)
 test = np.isin(trial_of, TEST_TRIALS)
 assert not (train & test).any(), "a window ended up in both splits"
 
-trial_acc = LinearDiscriminantAnalysis().fit(X[train], Y[train]).score(X[test], Y[test])
+# StandardScaler because the four features are on wildly different scales:
+# MAV is around 0.03, ZC is in the hundreds. Without it the big-numbered
+# features dominate.
+# shrinkage because 64 features estimated from overlapping windows makes the
+# plain covariance estimate unstable.
+model = make_pipeline(
+    StandardScaler(),
+    LinearDiscriminantAnalysis(solver="lsqr", shrinkage="auto"),
+)
+model.fit(X[train], y[train])
+pred = model.predict(X[test])
 
+print(f"accuracy: {np.mean(pred == y[test]):.3f}   (chance is {1/17:.3f})")
 
-print(f"random window split : {random_acc:.3f}")
-print(f"held-out trials     : {trial_acc:.3f}")
+# Which gestures get mistaken for which?
+mistakes = {}
+for true, guess in zip(y[test], pred):
+    if true != guess:
+        mistakes[(true, guess)] = mistakes.get((true, guess), 0) + 1
+
+print("\nmost common mistakes:")
+for (true, guess), n in sorted(mistakes.items(), key=lambda kv: -kv[1])[:8]:
+    print(f"  {n:>4}  {GESTURES[true]:<34} -> {GESTURES[guess]}")
